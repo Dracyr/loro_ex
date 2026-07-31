@@ -2,7 +2,8 @@ defmodule LoroEx.MixProject do
   use Mix.Project
 
   @version "0.9.1"
-  @source_url "https://github.com/bmalum/loro_ex"
+  @source_url "https://github.com/Dracyr/loro_ex"
+  @upstream_url "https://github.com/bmalum/loro_ex"
 
   def project do
     [
@@ -79,7 +80,7 @@ defmodule LoroEx.MixProject do
                .formatter.exs mix.exs README.md LICENSE CHANGELOG.md
                checksum-Elixir.LoroEx.Native.exs),
       licenses: ["Apache-2.0"],
-      links: %{"GitHub" => @source_url}
+      links: %{"Fork" => @source_url, "Upstream" => @upstream_url}
     ]
   end
 
