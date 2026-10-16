@@ -22,16 +22,17 @@
 //!    would deadlock. Callbacks only encode and `send` to a pid.
 
 use rustler::{
-    Atom, Binary, Encoder, Error as NifError, LocalPid, NifResult, OwnedBinary, ResourceArc,
+    Atom, Binary, Encoder, Env, Error as NifError, LocalPid, NifResult, OwnedBinary, ResourceArc,
+    Term,
 };
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use loro::{
     awareness::EphemeralStore,
     cursor::{Cursor, PosType, Side},
     ContainerID, ContainerType, ExportMode, Frontiers, LoroDoc, LoroEncodeError, LoroError,
     LoroTreeError, LoroValue, Subscription, TextDelta, TreeID, UndoManager, ValueOrContainer,
-    VersionVector,
+    VersionVector, ID,
 };
 
 mod atoms {
@@ -91,7 +92,14 @@ mod atoms {
         loro_diff,
         loro_ephemeral,
         loro_pre_commit,
-        loro_peer_id_change
+        loro_peer_id_change,
+
+        // Change metadata keys (`counter` is already a container kind atom)
+        peer,
+        lamport,
+        length,
+        timestamp,
+        message
     }
 }
 
@@ -101,12 +109,29 @@ mod atoms {
 
 pub struct DocResource {
     pub inner: Mutex<LoroDoc>,
+    /// The message every local commit carries while it is set. A host labels
+    /// a whole operation this way, since every mutation here commits on its
+    /// own; commits with an identical message merge into one change.
+    pub commit_note: Arc<Mutex<Option<String>>>,
 }
 
 impl DocResource {
     fn new(doc: LoroDoc) -> Self {
+        let commit_note: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+        let note = Arc::clone(&commit_note);
+        // Installed once per doc and never removed: it lives as long as the doc.
+        doc.subscribe_pre_commit(Box::new(move |e| {
+            if let Ok(note) = note.lock() {
+                if let Some(msg) = note.as_deref() {
+                    e.modifier.set_message(msg);
+                }
+            }
+            true
+        }))
+        .detach();
         Self {
             inner: Mutex::new(doc),
+            commit_note,
         }
     }
 }
@@ -569,6 +594,60 @@ fn set_peer_id(doc: ResourceArc<DocResource>, peer_id: u64) -> NifResult<Atom> {
     let guard = doc.inner.lock().map_err(|_| poisoned_to_nif())?;
     guard.set_peer_id(peer_id).map_err(loro_err_to_nif)?;
     Ok(atoms::ok())
+}
+
+/// Record a wall-clock timestamp (seconds) on every local change from now on.
+#[rustler::nif(schedule = "DirtyCpu")]
+fn set_record_timestamp(doc: ResourceArc<DocResource>, record: bool) -> NifResult<Atom> {
+    let guard = doc.inner.lock().map_err(|_| poisoned_to_nif())?;
+    guard.set_record_timestamp(record);
+    Ok(atoms::ok())
+}
+
+/// How long, in seconds, consecutive local commits with the same message
+/// keep merging into one change. A merged change keeps its first timestamp.
+#[rustler::nif(schedule = "DirtyCpu")]
+fn set_change_merge_interval(doc: ResourceArc<DocResource>, interval: i64) -> NifResult<Atom> {
+    let guard = doc.inner.lock().map_err(|_| poisoned_to_nif())?;
+    guard.set_change_merge_interval(interval);
+    Ok(atoms::ok())
+}
+
+/// Set (or, with `nil`, clear) the message every local commit carries.
+#[rustler::nif(schedule = "DirtyCpu")]
+fn set_commit_note(doc: ResourceArc<DocResource>, note: Option<String>) -> NifResult<Atom> {
+    let mut guard = doc.commit_note.lock().map_err(|_| poisoned_to_nif())?;
+    *guard = note;
+    Ok(atoms::ok())
+}
+
+/// The change covering op `counter` of `peer`: `{:ok, %{peer, counter,
+/// lamport, length, timestamp, message}}`, `message` nil when there is none.
+#[rustler::nif(schedule = "DirtyCpu")]
+fn get_change(
+    env: Env<'_>,
+    doc: ResourceArc<DocResource>,
+    peer: u64,
+    counter: i32,
+) -> NifResult<Term<'_>> {
+    let guard = doc.inner.lock().map_err(|_| poisoned_to_nif())?;
+    let Some(change) = guard.get_change(ID::new(peer, counter)) else {
+        return Err(NifError::Term(Box::new((
+            atoms::id_not_found(),
+            "no change covers that id",
+        ))));
+    };
+    let map = rustler::types::map::map_new(env)
+        .map_put(atoms::peer().encode(env), change.id.peer.encode(env))?
+        .map_put(atoms::counter().encode(env), change.id.counter.encode(env))?
+        .map_put(atoms::lamport().encode(env), change.lamport.encode(env))?
+        .map_put(atoms::length().encode(env), change.len.encode(env))?
+        .map_put(atoms::timestamp().encode(env), change.timestamp.encode(env))?
+        .map_put(
+            atoms::message().encode(env),
+            change.message.as_deref().map(str::to_owned).encode(env),
+        )?;
+    Ok((atoms::ok(), map).encode(env))
 }
 
 // ---------------------------------------------------------------------------

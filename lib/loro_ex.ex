@@ -519,6 +519,58 @@ defmodule LoroEx do
   defdelegate set_detached_editing(doc, enable), to: Native
 
   @doc """
+  Record a wall-clock timestamp, in seconds, on every local change from
+  now on. Off by default: changes then carry timestamp `0`.
+  """
+  @spec set_record_timestamp(doc(), boolean()) :: :ok | error()
+  defdelegate set_record_timestamp(doc, record), to: Native
+
+  @doc """
+  How long, in seconds, consecutive local commits with the same message
+  keep merging into one change. A merged change keeps its first commit's
+  timestamp, so this bounds how stale that timestamp can be. Loro's
+  default is 1000.
+  """
+  @spec set_change_merge_interval(doc(), integer()) :: :ok | error()
+  defdelegate set_change_merge_interval(doc, seconds), to: Native
+
+  @doc """
+  Set the message every local commit carries, or clear it with `nil`.
+
+  Every mutation in this library commits on its own, so a host that wants
+  to label one logical operation sets the note before it and clears it
+  after: the operation's commits all carry it, and, sharing one message,
+  merge into a single change. Imported changes keep their own messages.
+
+  ## Example
+
+      :ok = LoroEx.set_commit_note(doc, ~s({"by":"agent:a1"}))
+      :ok = LoroEx.map_set(doc, "m", "k", "1")
+      :ok = LoroEx.set_commit_note(doc, nil)
+  """
+  @spec set_commit_note(doc(), String.t() | nil) :: :ok | error()
+  defdelegate set_commit_note(doc, note), to: Native
+
+  @doc """
+  The change covering op `counter` of `peer`, as a map with `:peer`,
+  `:counter` (the change's first op), `:lamport`, `:length`, `:timestamp`
+  (seconds, `0` when undated) and `:message` (`nil` when none). Errors
+  with `:id_not_found` when no change covers the id.
+  """
+  @spec get_change(doc(), non_neg_integer(), non_neg_integer()) ::
+          {:ok,
+           %{
+             peer: non_neg_integer(),
+             counter: non_neg_integer(),
+             lamport: non_neg_integer(),
+             length: non_neg_integer(),
+             timestamp: integer(),
+             message: String.t() | nil
+           }}
+          | error()
+  defdelegate get_change(doc, peer, counter), to: Native
+
+  @doc """
   Export the entire document state as a self-contained snapshot.
 
   The returned binary is a **full** snapshot: every op, every

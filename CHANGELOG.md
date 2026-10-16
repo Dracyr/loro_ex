@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Loro bumped to 1.16.2: faster imports concurrent with local edits, atomic
+  batch imports, malformed ops rejected instead of aborting, and fixes to
+  undo, checkout and snapshot import.
+
+### Added — History metadata (4 NIFs)
+
+- `LoroEx.set_record_timestamp/2` — date every local change from now on.
+- `LoroEx.set_change_merge_interval/2` — bound how long identical commits
+  keep merging into one change (and so how stale its timestamp gets).
+- `LoroEx.set_commit_note/2` — a message every local commit carries until
+  cleared. Every mutation here commits on its own, so this is how a host
+  labels one logical operation; its commits merge into one change.
+- `LoroEx.get_change/3` — read a change's lamport, length, timestamp and
+  message back.
+
 ## [0.9.0] — 2026-05-15
 
 Production polish release. Strictly additive — zero breaking changes.

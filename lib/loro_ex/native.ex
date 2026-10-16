@@ -82,6 +82,10 @@ defmodule LoroEx.Native do
   def is_detached(_doc), do: :erlang.nif_error(:nif_not_loaded)
 
   def set_detached_editing(_doc, _enable), do: :erlang.nif_error(:nif_not_loaded)
+  def set_record_timestamp(_doc, _record), do: :erlang.nif_error(:nif_not_loaded)
+  def set_change_merge_interval(_doc, _seconds), do: :erlang.nif_error(:nif_not_loaded)
+  def set_commit_note(_doc, _note), do: :erlang.nif_error(:nif_not_loaded)
+  def get_change(_doc, _peer, _counter), do: :erlang.nif_error(:nif_not_loaded)
   def export_snapshot(_doc), do: :erlang.nif_error(:nif_not_loaded)
   def export_shallow_snapshot(_doc, _frontier), do: :erlang.nif_error(:nif_not_loaded)
   def export_updates_from(_doc, _version), do: :erlang.nif_error(:nif_not_loaded)
